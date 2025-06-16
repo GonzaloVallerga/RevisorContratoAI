@@ -10,12 +10,4 @@ async def upload_pdf(file: UploadFile = File(...)):
     text = ""
     for page in doc:
         text += page.get_text()
-    return {"extracted_text": text[:1000]}  # Devuelve primeros 1000 caracteres
-
-if __name__ == "__main__":
-  import uvicorn
-  uvicorn.run(app, host="0.0.0.0", port=8000)
-
-git add .
-git commit -m "fix: remove wrong fitz package"
-git push
+    return {"extracted_text": text[:1000]}  # opcional: acortar
