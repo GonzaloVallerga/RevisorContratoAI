@@ -2,41 +2,58 @@ from fastapi import FastAPI, File, UploadFile
 import fitz  # PyMuPDF
 import openai
 import os
-from dotenv import load_dotenv
+
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
-# Cargamos la API Key desde variables de entorno
-load_dotenv()
+# Configurar CORS (permite hacer requests desde Hoppscotch o Postman sin errores de CORS)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Configurar OpenRouter como proveedor de OpenAI
 openai.api_key = os.getenv("OPENAI_API_KEY")
+openai.api_base = "https://openrouter.ai/api/v1"
 
 @app.post("/upload/")
 async def upload_pdf(file: UploadFile = File(...)):
+    # Leer el archivo PDF
     contents = await file.read()
     doc = fitz.open(stream=contents, filetype="pdf")
+
+    # Extraer el texto
     text = ""
     for page in doc:
         text += page.get_text()
 
-    # Llamamos a la API de OpenAI para analizar el texto
+    # Limitar a 4000 tokens aprox (~16,000 caracteres)
+    extracted_text = text[:16000]
+
+    # Llamar al modelo de OpenRouter
     prompt = f"""
-    Este es un contrato de alquiler redactado en Argentina. Quiero que lo analices y me digas:
-    1. Si hay cláusulas abusivas.
-    2. Qué puntos legales faltan según la ley argentina.
-    3. Si está bien redactado y es justo para el inquilino.
-    Texto del contrato:
-    {text[:4000]}
-    """
+Sos un abogado especializado en contratos inmobiliarios en Argentina.
+Tu tarea es revisar el siguiente contrato de alquiler y señalar si hay cláusulas poco claras, abusivas, ilegales, o si falta alguna cláusula importante.
+
+Texto del contrato:
+\"\"\"
+{extracted_text}
+\"\"\"
+
+Devuelve un resumen claro, ordenado y fácil de entender.
+"""
 
     response = openai.ChatCompletion.create(
-        model="gpt-4",
+        model="mistralai/mixtral-8x7b-instruct",
         messages=[
-            {"role": "system", "content": "Sos un abogado experto en contratos de alquiler en Argentina."},
+            {"role": "system", "content": "Sos un experto en contratos de alquiler en Argentina."},
             {"role": "user", "content": prompt}
         ]
     )
 
-    return {
-        "extracted_text": text[:1000],
-        "contract_analysis": response['choices'][0]['message']['content']
-    }
+    ai_response = response.choices[0].message.content
+    return {"result": ai_response}
